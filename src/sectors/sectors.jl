@@ -108,10 +108,9 @@ which case it is complex).
 function Base.isreal(I::Type{<:Sector})
     u = one(I)
     if BraidingStyle(I) isa HasBraiding
-        return (eltype(Fsymbol(u, u, u, u, u, u)) <: Real) &&
-               (eltype(Rsymbol(u, u, u)) <: Real)
+        return Fscalartype(I) <: Real && Rscalartype(I) <: Real
     else
-        return (eltype(Fsymbol(u, u, u, u, u, u)) <: Real)
+        return Fscalartype(I) <: Real
     end
 end
 Base.isreal(::Type{Trivial}) = true
@@ -208,6 +207,9 @@ it is a rank 4 array of size
 function Fsymbol end
 Fsymbol(::Trivial, ::Trivial, ::Trivial, ::Trivial, ::Trivial, ::Trivial) = 1
 
+# scalar type of the F symbols
+Fscalartype(I::Type{<:Sector}) = eltype(Core.Compiler.return_type(Fsymbol, NTuple{6,I}))
+
 """
     Rsymbol(a::I, b::I, c::I) where {I<:Sector}
 
@@ -223,6 +225,7 @@ number. Otherwise it is a square matrix with row and column size
 """
 function Rsymbol end
 Rsymbol(::Trivial, ::Trivial, ::Trivial) = 1
+Rscalartype(I::Type{<:Sector}) = eltype(Core.Compiler.return_type(Rsymbol, NTuple{3,I}))
 
 # If a I::Sector with `fusion(I) == GenericFusion` fusion wants to have custom vertex
 # labels, a specialized method for `vertindex2label` should be added
