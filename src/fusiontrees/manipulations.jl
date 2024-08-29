@@ -17,7 +17,7 @@ function insertat(f₁::FusionTree{I}, i::Int, f₂::FusionTree{I,0}) where {I}
     # this actually removes uncoupled line i, which should be trivial
     (f₁.uncoupled[i] == f₂.coupled && !f₁.isdual[i]) ||
         throw(SectorMismatch("cannot connect $(f₂.uncoupled) to $(f₁.uncoupled[i])"))
-    coeff = Fsymbol(one(I), one(I), one(I), one(I), one(I), one(I))[1, 1, 1, 1]
+    coeff = one(Fscalartype(I))
 
     uncoupled = TupleTools.deleteat(f₁.uncoupled, i)
     coupled = f₁.coupled
@@ -39,7 +39,7 @@ function insertat(f₁::FusionTree{I}, i, f₂::FusionTree{I,1}) where {I}
     # identity operation
     (f₁.uncoupled[i] == f₂.coupled && !f₁.isdual[i]) ||
         throw(SectorMismatch("cannot connect $(f₂.uncoupled) to $(f₁.uncoupled[i])"))
-    coeff = Fsymbol(one(I), one(I), one(I), one(I), one(I), one(I))[1, 1, 1, 1]
+    coeff = one(Fscalartype(I))
     isdual′ = TupleTools.setindex(f₁.isdual, f₂.isdual[1], i)
     f = FusionTree{I}(f₁.uncoupled, f₁.coupled, isdual′, f₁.innerlines, f₁.vertices)
     return fusiontreedict(I)(f => coeff)
@@ -59,7 +59,7 @@ function insertat(f₁::FusionTree{I}, i, f₂::FusionTree{I,2}) where {I}
         isdual′ = (isdualb, isdualc, tail(isdual)...)
         inner′ = (uncoupled[1], inner...)
         vertices′ = (f₂.vertices..., f₁.vertices...)
-        coeff = Fsymbol(one(I), one(I), one(I), one(I), one(I), one(I))[1, 1, 1, 1]
+        coeff = one(Fscalartype(I))
         f′ = FusionTree(uncoupled′, coupled, isdual′, inner′, vertices′)
         return fusiontreedict(I)(f′ => coeff)
     end
@@ -110,7 +110,7 @@ function insertat(f₁::FusionTree{I,N₁}, i, f₂::FusionTree{I,N₂}) where {
     F = fusiontreetype(I, N₁ + N₂ - 1)
     (f₁.uncoupled[i] == f₂.coupled && !f₁.isdual[i]) ||
         throw(SectorMismatch("cannot connect $(f₂.uncoupled) to $(f₁.uncoupled[i])"))
-    coeff = Fsymbol(one(I), one(I), one(I), one(I), one(I), one(I))[1, 1]
+    coeff = one(Fscalartype(I))
     T = typeof(coeff)
     if length(f₁) == 1
         return fusiontreedict(I){F,T}(f₂ => coeff)
@@ -325,8 +325,8 @@ function foldright(f₁::FusionTree{I,N₁}, f₂::FusionTree{I,N₂}) where {I<
             for μ in (hasmultiplicities ? (1:Nsymbol(c1, c2, c)) : (nothing,))
                 fc = FusionTree((c1, c2), c, (!isduala, false), (), (μ,))
                 for (fl′, coeff1) in insertat(fc, 2, f₁)
-                    N₁ > 1 && fl′.innerlines[1] != one(I) && continue
-                    coupled = fl′.coupled
+                    N₁ > 1 && !isone(fl′.innerlines[1]) && continue
+                    coupled = fl′.coupled                             
                     uncoupled = Base.tail(Base.tail(fl′.uncoupled))
                     isdual = Base.tail(Base.tail(fl′.isdual))
                     inner = N₁ <= 3 ? () : Base.tail(Base.tail(fl′.innerlines))
@@ -460,7 +460,7 @@ function _recursive_repartition(f₁::FusionTree{I,N₁},
     # precompute the parameters of the return type
     F₁ = fusiontreetype(I, N)
     F₂ = fusiontreetype(I, N₁ + N₂ - N)
-    coeff = @inbounds Fsymbol(one(I), one(I), one(I), one(I), one(I), one(I))[1, 1, 1, 1]
+    coeff = one(Fscalartype(I))
     T = typeof(coeff)
     if N == N₁
         return fusiontreedict(I){Tuple{F₁,F₂},T}((f₁, f₂) => coeff)
@@ -503,8 +503,7 @@ function Base.transpose(f₁::FusionTree{I}, f₂::FusionTree{I},
     p = linearizepermutation(p1, p2, length(f₁), length(f₂))
     @assert iscyclicpermutation(p)
     if usetransposecache[]
-        u = one(I)
-        T = eltype(Fsymbol(u, u, u, u, u, u))
+        T = Fscalartype(I) 
         F₁ = fusiontreetype(I, N₁)
         F₂ = fusiontreetype(I, N₂)
         D = fusiontreedict(I){Tuple{F₁,F₂},T}
@@ -590,8 +589,7 @@ function planar_trace(f₁::FusionTree{I}, f₂::FusionTree{I},
          map(l -> l - count(l .> q′), TupleTools.getindices(linearindex, p2)))
     end
 
-    u = one(I)
-    T = typeof(Fsymbol(u, u, u, u, u, u)[1, 1, 1, 1])
+    T = Fscalartype(I)
     F₁ = fusiontreetype(I, N₁)
     F₂ = fusiontreetype(I, N₂)
     newtrees = FusionTreeDict{Tuple{F₁,F₂},T}()
@@ -618,8 +616,7 @@ of output trees and corresponding coefficients.
 """
 function planar_trace(f::FusionTree{I,N},
                       q1::IndexTuple{N₃}, q2::IndexTuple{N₃}) where {I<:Sector,N,N₃}
-    u = one(I)
-    T = typeof(Fsymbol(u, u, u, u, u, u)[1, 1, 1, 1])
+    T = Fscalartype(I)
     F = fusiontreetype(I, N - 2 * N₃)
     newtrees = FusionTreeDict{F,T}()
     N₃ === 0 && return push!(newtrees, f => one(T))
@@ -676,8 +673,7 @@ function elementary_trace(f::FusionTree{I,N}, i) where {I<:Sector,N}
     i < N || f.coupled == one(I) ||
         throw(ArgumentError("Cannot trace outputs i=$N and 1 of fusion tree that couples to non-trivial sector"))
 
-    u = one(I)
-    T = typeof(Fsymbol(u, u, u, u, u, u)[1, 1, 1, 1])
+    T = Fscalartype(I)
     F = fusiontreetype(I, N - 2)
     newtrees = FusionTreeDict{F,T}()
 
@@ -788,15 +784,14 @@ function artin_braid(f::FusionTree{I,N}, i; inv::Bool=false) where {I<:Sector,N}
     inner = f.innerlines
     inner_extended = (uncoupled[1], inner..., coupled′)
     vertices = f.vertices
-    u = one(I)
 
     if BraidingStyle(I) isa NoBraiding
-        oneT = Fsymbol(u, u, u, u, u, u)[1, 1, 1, 1]
+        oneT = one(Fscalartype(I))
     else
-        oneT = Rsymbol(u, u, u)[1, 1] * Fsymbol(u, u, u, u, u, u)[1, 1, 1, 1]
+        oneT = one(Fscalartype(I)) * one(Rscalartype(I))
     end
 
-    if u in (uncoupled[i], uncoupled[i + 1])
+    if isone(uncoupled[i]) || isone(uncoupled[i+1])
         # braiding with trivial sector: simple and always possible
         inner′ = inner
         vertices′ = vertices
@@ -928,7 +923,7 @@ function braid(f::FusionTree{I,N},
                p::NTuple{N,Int}) where {I<:Sector,N}
     TupleTools.isperm(p) || throw(ArgumentError("not a valid permutation: $p"))
     if FusionStyle(I) isa UniqueFusion && BraidingStyle(I) isa SymmetricBraiding
-        coeff = Rsymbol(one(I), one(I), one(I))
+        coeff = one(Rscalartype(I))
         for i in 1:N
             for j in 1:(i - 1)
                 if p[j] > p[i]
@@ -943,10 +938,7 @@ function braid(f::FusionTree{I,N},
         f′ = FusionTree{I}(uncoupled′, coupled′, isdual′)
         return fusiontreedict(I)(f′ => coeff)
     else
-        u = one(I)
-        T = BraidingStyle(I) isa NoBraiding ?
-            typeof(Fsymbol(u, u, u, u, u, u)[1, 1, 1, 1]) :
-            typeof(Rsymbol(u, u, u)[1, 1] * Fsymbol(u, u, u, u, u, u)[1, 1, 1, 1])
+        T = BraidingStyle(I) isa NoBraiding ? Fscalartype(I) : typeof(one(Fscalartype(I)) * one(Rscalartype(I)))
         coeff = one(T)
         trees = FusionTreeDict(f => coeff)
         newtrees = empty(trees)
@@ -1012,8 +1004,7 @@ function braid(f₁::FusionTree{I}, f₂::FusionTree{I},
     if FusionStyle(f₁) isa UniqueFusion &&
        BraidingStyle(f₁) isa SymmetricBraiding
         if usebraidcache_abelian[]
-            u = one(I)
-            T = Int
+            T = Int # do we hardcode this ?
             F₁ = fusiontreetype(I, N₁)
             F₂ = fusiontreetype(I, N₂)
             D = SingletonDict{Tuple{F₁,F₂},T}
@@ -1023,11 +1014,9 @@ function braid(f₁::FusionTree{I}, f₂::FusionTree{I},
         end
     else
         if usebraidcache_nonabelian[]
-            u = one(I)
             T = BraidingStyle(I) isa NoBraiding ?
-                typeof(Fsymbol(u, u, u, u, u, u)[1, 1, 1, 1]) :
-                typeof(sqrtdim(u) * Fsymbol(u, u, u, u, u, u)[1, 1, 1, 1] *
-                       Rsymbol(u, u, u)[1, 1])
+            Fscalartype(I) :
+            typeof(one(Fscalartype(I)) * one(Rscalartype(I)))
             F₁ = fusiontreetype(I, N₁)
             F₂ = fusiontreetype(I, N₂)
             D = FusionTreeDict{Tuple{F₁,F₂},T}
