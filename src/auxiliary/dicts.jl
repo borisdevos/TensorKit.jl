@@ -123,6 +123,9 @@ function SortedVectorDict{K,V}(kv) where {K,V}
     end
     return d
 end
+
+Base.:(==)(l::SortedVectorDict, r::SortedVectorDict) = l.keys == r.keys && l.values == r.values
+
 SortedVectorDict(pairs::Vector{Pair{K,V}}) where {K,V} = SortedVectorDict{K,V}(pairs)
 @noinline function _no_pair_error()
     msg = "SortedVectorDict(kv): kv needs to be an iterator of pairs"
