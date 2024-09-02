@@ -86,6 +86,8 @@ findindex(::SectorValues{Trivial}, c::Trivial) = 1
 
 Return the unit element within this type of sector.
 """
+rightone(a::Sector) = one(a)
+leftone(a::Sector) = one(a)
 Base.one(a::Sector) = one(typeof(a))
 Base.one(::Type{Trivial}) = Trivial()
 
@@ -310,10 +312,10 @@ number. Otherwise it is a square matrix with row and column size
 """
 function Bsymbol(a::I, b::I, c::I) where {I<:Sector}
     if FusionStyle(I) isa UniqueFusion || FusionStyle(I) isa SimpleFusion
-        (sqrtdim(a) * sqrtdim(b) * isqrtdim(c)) * Fsymbol(a, b, dual(b), a, c, one(a))
+        (sqrtdim(a) * sqrtdim(b) * isqrtdim(c)) * Fsymbol(a, b, dual(b), a, c, rightone(a))
     else
         reshape((sqrtdim(a) * sqrtdim(b) * isqrtdim(c)) *
-                Fsymbol(a, b, dual(b), a, c, one(a)),
+                Fsymbol(a, b, dual(b), a, c, rightone(a)),
                 (Nsymbol(a, b, c), Nsymbol(c, dual(b), a)))
     end
 end
