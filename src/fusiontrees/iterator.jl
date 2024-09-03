@@ -51,7 +51,7 @@ end
 # * Iterator methods:
 #   Start with special cases:
 function Base.iterate(it::FusionTreeIterator{I,0},
-                      state=!isone(it.coupled))  where {I<:Sector} # playing tricks to have to avoid one(I) for I<:IsingBimod
+                      state=!isone(it.coupled))  where {I<:Sector}
     state && return nothing
     T = vertex_labeltype(I)
     @assert isone(it.coupled) "coupled sector isn't one"
