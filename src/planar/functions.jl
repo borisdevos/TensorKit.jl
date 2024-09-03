@@ -6,7 +6,7 @@
 
 function planarcopy(A, pA::Index2Tuple, conjA::Symbol, α::Number=One(), backend::Backend...)
     TC = TO.promote_add(scalartype(A), scalartype(α))
-    C = tensoralloc_add(TC, pA, A, conjA)
+    C = TO.tensoralloc_add(TC, pA, A, conjA)
     return planaradd!(C, A, pA, conjA, α, Zero(), backend...)
 end
 

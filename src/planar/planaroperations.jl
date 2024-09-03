@@ -60,7 +60,7 @@ function planarcontract!(C::AbstractTensorMap,
         throw(ArgumentError("unknown conjugation flag $conjB"))
     end
 
-    return _planarcontract!(C, A′, pA′, B′, pB′, pAB, α, β, backend...)
+    return __planarcontract!(C, A′, pA′, B′, pB′, pAB, α, β, backend...)
 end
 
 # ---------------
@@ -101,11 +101,11 @@ function trace_transpose!(tdst::AbstractTensorMap{S,N₁,N₂},
 end
 
 # TODO: reuse the same memcost checks as in `contract!`
-function _planarcontract!(C::AbstractTensorMap{S},
-                          A::AbstractTensorMap{S}, pA::Index2Tuple{N₁,N₃},
-                          B::AbstractTensorMap{S}, pB::Index2Tuple{N₃,N₂},
-                          pAB::Index2Tuple,
-                          α::Number, β::Number, backend::Backend...) where {S,N₁,N₂,N₃}
+function __planarcontract!(C::AbstractTensorMap{S},
+                           A::AbstractTensorMap{S}, pA::Index2Tuple{N₁,N₃},
+                           B::AbstractTensorMap{S}, pB::Index2Tuple{N₃,N₂},
+                           pAB::Index2Tuple,
+                           α::Number, β::Number, backend::Backend...) where {S,N₁,N₂,N₃}
     indA = (codomainind(A), reverse(domainind(A)))
     indB = (codomainind(B), reverse(domainind(B)))
     indAB = (ntuple(identity, N₁), reverse(ntuple(i -> i + N₁, N₂)))

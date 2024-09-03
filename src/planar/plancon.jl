@@ -30,14 +30,14 @@ function plancon(tensors, network,
     # TO.isnconstyle(network) || throw(ArgumentError("invalid NCON network: $network"))
     output′ = planconoutput(network, output)
 
-    if length(tensors) == 1
-        error("not implemented")
-        if length(output′) == length(network[1])
-            return tensorcopy(output′, tensors[1], network[1], conjlist[1] ? :C : :N)
-        else
-            return tensortrace(output′, tensors[1], network[1], conjlist[1] ? :C : :N)
-        end
-    end
+    # if length(tensors) == 1
+    #     error("not implemented")
+    #     if length(output′) == length(network[1])
+    #         return tensorcopy(output′, tensors[1], network[1], conjlist[1] ? :C : :N)
+    #     else
+    #         return tensortrace(output′, tensors[1], network[1], conjlist[1] ? :C : :N)
+    #     end
+    # end
 
     (tensors, network) = TO.resolve_traces(tensors, network)
     tree = order === nothing ? plancontree(network) : TO.indexordertree(network, order)
@@ -55,7 +55,7 @@ function planarcontracttree(tensors, network, conjlist, tree::Int, output)
 
     if isempty(qA[1]) # no traced indices
         return planarcopy(A, pA, conjA)
-        C = tensoralloc_add(scalartype(A), pA, A, conjA)
+        C = TensorOperations.tensoralloc_add(scalartype(A), pA, A, conjA)
         return planaradd!(C, A, pA, conjA, One(), Zero())
     else
         return planartrace(A, pA, qA, conjA)

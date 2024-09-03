@@ -287,10 +287,13 @@ function reorder_planar_indices(indA, pA, indB, pB, pAB)
         permB = reverse(getindices(pAB_lin,
                                    ntuple(n -> mod1(n - iAB + NA₁, NAB), NB₂)) .- NA₁)
 
-        pA′ = (getindices(pA[1], permA), pA[2])
-        pB′ = (pB[1], getindices(pB[2], permB))
-        pAB′ = (getindices(indAB_lin, ntuple(n -> mod1(n, NAB), NAB₁)),
-                reverse(getindices(indAB_lin, ntuple(n -> mod1(n + NAB₁, NAB), NAB₂))))
+        pA′ = pA
+        pB′ = pB
+        pAB′ = pAB
+        # pA′ = (getindices(pA[1], permA), pA[2])
+        # pB′ = (pB[1], getindices(pB[2], permB))
+        # pAB′ = (getindices(indAB_lin, ntuple(n -> mod1(n, NAB), NAB₁)),
+        # reverse(getindices(indAB_lin, ntuple(n -> mod1(n + NAB₁, NAB), NAB₂))))
     else
         pA′ = pA
         pB′ = pB
