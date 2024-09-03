@@ -311,7 +311,10 @@ function foldright(f₁::FusionTree{I,N₁}, f₂::FusionTree{I,N₂}) where {I<
         hasmultiplicities = FusionStyle(a) isa GenericFusion
         local newtrees
         if N₁ == 1
-            cset = (one(c1),)
+            # @show f₁, f₁.uncoupled, f₁.coupled
+            # @show c1
+            # @show a, c2
+            cset = (leftone(c1),) # is this the correct unit? case c1 ∈ ℳop, c2 ∈ ℳ so c1⊗c2 ∈ 𝒟, look at TK draft eq108
         elseif N₁ == 2
             cset = (f₁.uncoupled[2],)
         else
