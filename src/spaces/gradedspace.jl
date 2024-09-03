@@ -129,6 +129,12 @@ function Base.axes(V::GradedSpace{I}, c::I) where {I<:Sector}
 end
 
 Base.oneunit(S::Type{<:GradedSpace{I}}) where {I<:Sector} = S(one(I) => 1)
+function leftoneunit(S::Type{<:GradedSpace{I}}) where {I<:Sector} # will we need this for FiniteMPS? define in MPSKit?
+    return oneunit(S)
+end
+function rightoneunit(S::Type{<:GradedSpace{I}}) where {I<:Sector}
+    return oneunit(S)
+end
 
 # TODO: the following methods can probably be implemented more efficiently for
 # `FiniteGradedSpace`, but we don't expect them to be used often in hot loops, so
