@@ -683,10 +683,6 @@ function elementary_trace(f::FusionTree{I,N}, i) where {I<:Sector,N}
     b′ = f.uncoupled[j]
     # if trace is zero, return empty dict
     (b == dual(b′) && f.isdual[i] != f.isdual[j]) || return newtrees
-    @show f
-    @show f.uncoupled
-    @show f.innerlines
-    @show _one
     if i < N
         inner_extended = (_one, f.uncoupled[1], f.innerlines..., f.coupled)
         a = inner_extended[i]
