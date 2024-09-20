@@ -299,6 +299,8 @@ end
                                             α::Number,
                                             β::Number,
                                             backend::Backend...) where {S,N₁,N₂}
+    @info "at add_transpose! function"
+    @show tdst
     treetransposer(f₁, f₂) = transpose(f₁, f₂, p[1], p[2])
     return add_transform!(tdst, tsrc, p, treetransposer, α, β, backend...)
 end
@@ -310,12 +312,14 @@ function add_transform!(tdst::AbstractTensorMap{S,N₁,N₂},
                         α::Number,
                         β::Number,
                         backend::Backend...) where {S,N₁,N₂}
+    
+    @info "in function add_transform!"               
+    @show tdst
     @boundscheck begin
         permute(space(tsrc), (p₁, p₂)) == space(tdst) ||
             throw(SpaceMismatch("source = $(codomain(tsrc))←$(domain(tsrc)),
             dest = $(codomain(tdst))←$(domain(tdst)), p₁ = $(p₁), p₂ = $(p₂)"))
     end
-
     I = sectortype(S)
     if p₁ == codomainind(tsrc) && p₂ == domainind(tsrc)
         add!(tdst, tsrc, α, β)

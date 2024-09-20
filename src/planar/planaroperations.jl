@@ -70,13 +70,19 @@ function planarcontract!(C::AbstractTensorMap{S,N₁,N₂},
         A′ = TO.tensoralloc_add(scalartype(A), (oindA, cindA), A, :N, true)
         add_transpose!(A′, A, (oindA, cindA), true, false, backend...)
     end
-
+    @info "before possible changes to B"
+    @show B
     if cindB == codB && oindB == domB
         B′ = B
     else
         B′ = TensorOperations.tensoralloc_add(scalartype(B), (cindB, oindB), B, :N, true)
+        @show B′
         add_transpose!(B′, B, (cindB, oindB), true, false, backend...)
+        @info "after changes to B"
+        @show B′
     end
+    # @show A′
+    # @show B′
     mul!(C, A′, B′, α, β)
     (oindA == codA && cindA == domA) || TO.tensorfree!(A′)
     (cindB == codB && oindB == domB) || TO.tensorfree!(B′)
