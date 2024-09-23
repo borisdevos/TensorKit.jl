@@ -10,9 +10,6 @@ function TO.tensoralloc(::Type{TT}, structure, istemp=false,
     function blockallocator(d)
         return TO.tensoralloc(storagetype(TT), d, istemp, backend...)
     end
-    # @info "tensorkit tensoralloc"
-    # @show structure
-    # @show TensorMap(blockallocator, structure)
     return TensorMap(blockallocator, structure)
 end
 
