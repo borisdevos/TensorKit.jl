@@ -324,8 +324,10 @@ function add_transform!(tdst::AbstractTensorMap{S,N₁,N₂},
     elseif FusionStyle(I) isa UniqueFusion
         _add_abelian_kernel!(tdst, tsrc, (p₁, p₂), fusiontreetransform, α, β, backend...)
     else
+        @info "General kernel"
         _add_general_kernel!(tdst, tsrc, (p₁, p₂), fusiontreetransform, α, β, backend...)
     end
+    #@show stacktrace()[2:end]
     return tdst
 end
 
@@ -368,13 +370,21 @@ function _add_general_kernel!(tdst, tsrc, p, fusiontreetransform, α, β, backen
                                                    s₂, α, β, backend...)
         end
     else
+        @info "start of add general kernel"
+        #@show tdst
         for (f₁, f₂) in fusiontrees(tsrc)
+            @info "fusiontreetransform"
             for ((f₁′, f₂′), coeff) in fusiontreetransform(f₁, f₂)
+                #@show stacktrace()
+                #@show coeff
                 @inbounds TO.tensoradd!(tdst[f₁′, f₂′], p, tsrc[f₁, f₂], :N, α * coeff,
                                         true, backend...)
             end
+            #@show @which transpose(f₁, f₂, p[1], p[2])
         end
     end
+    @info "end of add general kernel"
+    #@show tdst
     return nothing
 end
 
