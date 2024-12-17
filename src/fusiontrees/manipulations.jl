@@ -46,6 +46,7 @@ function insertat(f₁::FusionTree{I}, i, f₂::FusionTree{I,1}) where {I}
 end
 function insertat(f₁::FusionTree{I}, i, f₂::FusionTree{I,2}) where {I}
     # elementary building block,
+    @info "elementary insertat"	
     (f₁.uncoupled[i] == f₂.coupled && !f₁.isdual[i]) ||
         throw(SectorMismatch("cannot connect $(f₂.uncoupled) to $(f₁.uncoupled[i])"))
     uncoupled = f₁.uncoupled
@@ -238,6 +239,7 @@ end
 # change to N₁ - 1, N₂ + 1
 function bendright(f₁::FusionTree{I,N₁}, f₂::FusionTree{I,N₂}) where {I<:Sector,N₁,N₂}
     # map final splitting vertex (a, b)<-c to fusion vertex a<-(c, dual(b))
+    @info "bendright"
     @assert N₁ > 0
     c = f₁.coupled
     a = N₁ == 1 ? leftone(f₁.uncoupled[1]) : (N₁ == 2 ? f₁.uncoupled[1] : f₁.innerlines[end])
@@ -258,7 +260,9 @@ function bendright(f₁::FusionTree{I,N₁}, f₂::FusionTree{I,N₂}) where {I<
         coeff₀ *= conj(frobeniusschur(dual(b)))
     end
     if FusionStyle(I) isa MultiplicityFreeFusion
+        @show a,b,c
         coeff = coeff₀ * Bsymbol(a, b, c)
+        @show coeff
         vertices2 = N₂ > 0 ? (f₂.vertices..., nothing) : ()
         f₂′ = FusionTree(uncoupled2, a, isdual2, inner2, vertices2)
         return SingletonDict((f₁′, f₂′) => coeff)
@@ -283,6 +287,7 @@ end
 # change to N₁ + 1, N₂ - 1
 function bendleft(f₁::FusionTree{I}, f₂::FusionTree{I}) where {I}
     # map final fusion vertex c<-(a, b) to splitting vertex (c, dual(b))<-a
+    @info bendleft
     return fusiontreedict(I)((f₁′, f₂′) => conj(coeff)
                              for
                              ((f₂′, f₁′), coeff) in bendright(f₂, f₁))
@@ -291,6 +296,7 @@ end
 # change to N₁ - 1, N₂ + 1
 function foldright(f₁::FusionTree{I,N₁}, f₂::FusionTree{I,N₂}) where {I<:Sector,N₁,N₂}
     # map first splitting vertex (a, b)<-c to fusion vertex b<-(dual(a), c)
+    @info "foldright"
     @assert N₁ > 0
     a = f₁.uncoupled[1]
     isduala = f₁.isdual[1]
@@ -373,11 +379,17 @@ end
 
 # clockwise cyclic permutation while preserving (N₁, N₂): foldright & bendleft
 function cycleclockwise(f₁::FusionTree{I}, f₂::FusionTree{I}) where {I<:Sector}
+    @info "cycleclockwise"
     local newtrees
     if length(f₁) > 0
+        @info "length(f₁) > 0"
         for ((f1a, f2a), coeffa) in foldright(f₁, f₂)
+            @show f₁, f₂
+            @show coeffa
             for ((f1b, f2b), coeffb) in bendleft(f1a, f2a)
+                @show coeffb
                 coeff = coeffa * coeffb
+                @show coeff
                 if (@isdefined newtrees)
                     newtrees[(f1b, f2b)] = get(newtrees, (f1b, f2b), zero(coeff)) + coeff
                 else
@@ -386,9 +398,11 @@ function cycleclockwise(f₁::FusionTree{I}, f₂::FusionTree{I}) where {I<:Sect
             end
         end
     else
+        @info "length(f₁) = 0"
         for ((f1a, f2a), coeffa) in bendleft(f₁, f₂)
             for ((f1b, f2b), coeffb) in foldright(f1a, f2a)
                 coeff = coeffa * coeffb
+                @show coeff
                 if (@isdefined newtrees)
                     newtrees[(f1b, f2b)] = get(newtrees, (f1b, f2b), zero(coeff)) + coeff
                 else
@@ -402,6 +416,7 @@ end
 
 # anticlockwise cyclic permutation while preserving (N₁, N₂): foldleft & bendright
 function cycleanticlockwise(f₁::FusionTree{I}, f₂::FusionTree{I}) where {I<:Sector}
+    @info "cycleanticlockwise"
     local newtrees
     if length(f₂) > 0
         for ((f1a, f2a), coeffa) in foldleft(f₁, f₂)
@@ -479,7 +494,7 @@ end
 
 # transpose double fusion tree
 const transposecache = LRU{Any,Any}(; maxsize=10^5)
-const usetransposecache = Ref{Bool}(true)
+const usetransposecache = Ref{Bool}(false)
 
 """
     transpose(f₁::FusionTree{I}, f₂::FusionTree{I},
@@ -495,8 +510,11 @@ repartitioning and permuting the tree such that sectors `p1` become outgoing and
 """
 function Base.transpose(f₁::FusionTree{I}, f₂::FusionTree{I},
                         p1::IndexTuple{N₁}, p2::IndexTuple{N₂}) where {I<:Sector,N₁,N₂}
+    @info "Base transpose"
     N = N₁ + N₂
     @assert length(f₁) + length(f₂) == N
+    @show p1, p2
+    @show f₁, f₂
     p = linearizepermutation(p1, p2, length(f₁), length(f₂))
     @assert iscyclicpermutation(p)
     if usetransposecache[]
@@ -521,6 +539,7 @@ const TransposeKey{I<:Sector,N₁,N₂} = Tuple{<:FusionTree{I},<:FusionTree{I},
                                             IndexTuple{N₁},IndexTuple{N₂}}
 
 function _transpose((f₁, f₂, p1, p2)::TransposeKey{I,N₁,N₂}) where {I<:Sector,N₁,N₂}
+    @info "_transpose"
     N = N₁ + N₂
     p = linearizepermutation(p1, p2, length(f₁), length(f₂))
     newtrees = repartition(f₁, f₂, N₁)
@@ -529,7 +548,7 @@ function _transpose((f₁, f₂, p1, p2)::TransposeKey{I,N₁,N₂}) where {I<:S
     @assert i1 !== nothing
     i1 == 1 && return newtrees
     Nhalf = N >> 1
-    while 1 < i1 <= Nhalf
+    while 1 < i1 <= Nhalf 
         local newtrees′
         for ((f1a, f2a), coeffa) in newtrees
             for ((f1b, f2b), coeffb) in cycleanticlockwise(f1a, f2a)
@@ -559,6 +578,7 @@ function _transpose((f₁, f₂, p1, p2)::TransposeKey{I,N₁,N₂}) where {I<:S
         newtrees = newtrees′
         i1 = mod1(i1 + 1, N)
     end
+    @info "_transpose done"	
     return newtrees
 end
 
