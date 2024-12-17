@@ -327,7 +327,7 @@ end
 function Asymbol(a::I, b::I, c::I) where {I<:Sector}
     if FusionStyle(I) isa UniqueFusion || FusionStyle(I) isa SimpleFusion
         (sqrtdim(a) * sqrtdim(b) * isqrtdim(c)) *
-        conj(frobeniusschur(a) * Fsymbol(dual(a), a, b, b, one(a), c))
+        conj(frobeniusschur(a) * Fsymbol(dual(a), a, b, b, leftone(b), c))
     else
         reshape((sqrtdim(a) * sqrtdim(b) * isqrtdim(c)) *
                 conj(frobeniusschur(a) * Fsymbol(dual(a), a, b, b, one(a), c)),
