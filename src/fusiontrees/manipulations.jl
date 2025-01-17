@@ -37,16 +37,19 @@ function insertat(f₁::FusionTree{I}, i::Int, f₂::FusionTree{I,0}) where {I}
 end
 function insertat(f₁::FusionTree{I}, i, f₂::FusionTree{I,1}) where {I}
     # identity operation
+    # @info "identity insertat"
     (f₁.uncoupled[i] == f₂.coupled && !f₁.isdual[i]) ||
         throw(SectorMismatch("cannot connect $(f₂.uncoupled) to $(f₁.uncoupled[i])"))
     coeff = one(Fscalartype(I))
     isdual′ = TupleTools.setindex(f₁.isdual, f₂.isdual[1], i)
     f = FusionTree{I}(f₁.uncoupled, f₁.coupled, isdual′, f₁.innerlines, f₁.vertices)
+    # @info "output of identity insertat"
+    # @show f
     return fusiontreedict(I)(f => coeff)
 end
 function insertat(f₁::FusionTree{I}, i, f₂::FusionTree{I,2}) where {I}
     # elementary building block,
-    #@info "elementary insertat"	
+    # @info "elementary insertat"	
     (f₁.uncoupled[i] == f₂.coupled && !f₁.isdual[i]) ||
         throw(SectorMismatch("cannot connect $(f₂.uncoupled) to $(f₁.uncoupled[i])"))
     uncoupled = f₁.uncoupled
@@ -64,7 +67,7 @@ function insertat(f₁::FusionTree{I}, i, f₂::FusionTree{I,2}) where {I}
         f′ = FusionTree(uncoupled′, coupled, isdual′, inner′, vertices′)
         return fusiontreedict(I)(f′ => coeff)
     end
-    uncoupled′ = TupleTools.insertafter(TupleTools.setindex(uncoupled, b, i), i, (c,))
+    uncoupled′ = TupleTools.insertafter(TupleTools.setindex(uncoupled, b, i), i, (c,)) # insertafter does NOT overwrite element i, but inserts between i and i+1, while setindex overwrites a single value at index i
     isdual′ = TupleTools.insertafter(TupleTools.setindex(isdual, isdualb, i), i, (isdualc,))
     inner_extended = (uncoupled[1], inner..., coupled)
     a = inner_extended[i - 1]
@@ -74,9 +77,13 @@ function insertat(f₁::FusionTree{I}, i, f₂::FusionTree{I,2}) where {I}
         local newtrees
         for e in a ⊗ b
             coeff = conj(Fsymbol(a, b, c, d, e, e′))
-            iszero(coeff) && continue
+            iszero(coeff) && continue # the issue lies here b/c we set Fsymbols for viable Mop combinations to 1 without checking the fusion rules
+            # @info "viable fusion tree in elementary insertat"
+            # @show a, b, c, d, e, e′
             inner′ = TupleTools.insertafter(inner, i - 2, (e,))
-            f′ = FusionTree(uncoupled′, coupled, isdual′, inner′)
+            f′ = FusionTree(uncoupled′, coupled, isdual′, inner′) # at this level weird fusion trees are made
+            # @info "output of viable fusion tree in elementary insertat"
+            # @show f′
             if @isdefined newtrees
                 push!(newtrees, f′ => coeff)
             else
@@ -239,9 +246,12 @@ end
 # change to N₁ - 1, N₂ + 1
 function bendright(f₁::FusionTree{I,N₁}, f₂::FusionTree{I,N₂}) where {I<:Sector,N₁,N₂}
     # map final splitting vertex (a, b)<-c to fusion vertex a<-(c, dual(b))
-    #@info "bendright"
+    # @info "bendright"
     @assert N₁ > 0
     c = f₁.coupled
+    # @show N₁
+    # @show f₁
+    #@show f₁.innerlines[end] # doesn't always exist
     a = N₁ == 1 ? leftone(f₁.uncoupled[1]) : (N₁ == 2 ? f₁.uncoupled[1] : f₁.innerlines[end])
     b = f₁.uncoupled[N₁]
 
@@ -260,11 +270,14 @@ function bendright(f₁::FusionTree{I,N₁}, f₂::FusionTree{I,N₂}) where {I<
         coeff₀ *= conj(frobeniusschur(dual(b)))
     end
     if FusionStyle(I) isa MultiplicityFreeFusion
+        # @info "MultiplicityFreeFusion"
         #@show a,b,c
         coeff = coeff₀ * Bsymbol(a, b, c)
         #@show coeff
         vertices2 = N₂ > 0 ? (f₂.vertices..., nothing) : ()
-        f₂′ = FusionTree(uncoupled2, a, isdual2, inner2, vertices2)
+        f₂′ = FusionTree(uncoupled2, a, isdual2, inner2, vertices2) # check that this is viable?
+        # @show uncoupled2, a
+        # @show f₂′
         return SingletonDict((f₁′, f₂′) => coeff)
     else
         local newtrees
@@ -296,8 +309,10 @@ end
 # change to N₁ - 1, N₂ + 1
 function foldright(f₁::FusionTree{I,N₁}, f₂::FusionTree{I,N₂}) where {I<:Sector,N₁,N₂}
     # map first splitting vertex (a, b)<-c to fusion vertex b<-(dual(a), c)
-    #@info "foldright"
-    @assert N₁ > 0
+    # @info "foldright"
+    # @info "input fusion trees for foldright"
+    # @show f₁, f₂
+    @assert N₁ > 0 # normally a useless check
     a = f₁.uncoupled[1]
     isduala = f₁.isdual[1]
     factor = sqrtdim(a)
@@ -317,25 +332,35 @@ function foldright(f₁::FusionTree{I,N₁}, f₂::FusionTree{I,N₂}) where {I<
         hasmultiplicities = FusionStyle(a) isa GenericFusion
         local newtrees
         if N₁ == 1
-            cset = (leftone(c1),) # is this the correct unit? case c1 ∈ ℳop, c2 ∈ ℳ so c1⊗c2 ∈ 𝒟, look at TK draft eq108
+            cset = (leftone(c1),) # or rightone of a
         elseif N₁ == 2
             cset = (f₁.uncoupled[2],)
         else
             cset = ⊗(Base.tail(f₁.uncoupled)...)
         end
+        # @show c1, c2
+        # @show collect(c1 ⊗ c2)
+        # @show cset
         for c in c1 ⊗ c2
             c ∈ cset || continue
             for μ in (hasmultiplicities ? (1:Nsymbol(c1, c2, c)) : (nothing,))
                 fc = FusionTree((c1, c2), c, (!isduala, false), (), (μ,))
-                for (fl′, coeff1) in insertat(fc, 2, f₁)
-                    N₁ > 1 && !isone(fl′.innerlines[1]) && continue
+                # @show fc
+                for (fl′, coeff1) in insertat(fc, 2, f₁) # attach f₁ to c2 leg of fc
+                    # @info "intermediate fusion trees after first insertat"
+                    # @show fl′, fl′.innerlines
+                    N₁ > 1 && !isone(fl′.innerlines[1]) && continue # is this isone check correct? 
+                    # @info "N1/isone check passed" 
                     coupled = fl′.coupled                             
-                    uncoupled = Base.tail(Base.tail(fl′.uncoupled))
+                    uncoupled = Base.tail(Base.tail(fl′.uncoupled)) # why not TupleTools.tail2?
                     isdual = Base.tail(Base.tail(fl′.isdual))
                     inner = N₁ <= 3 ? () : Base.tail(Base.tail(fl′.innerlines))
                     vertices = N₁ <= 2 ? () : Base.tail(Base.tail(fl′.vertices))
                     fl = FusionTree{I}(uncoupled, coupled, isdual, inner, vertices)
-                    for (fr, coeff2) in insertat(fc, 2, f₂)
+                    # @show fl
+                    for (fr, coeff2) in insertat(fc, 2, f₂) # somewhere in this insertat sth goes wrong
+                        # @info "output of foldright after second insertat = output total foldright"
+                        # @show fr
                         coeff = factor * coeff1 * conj(coeff2)
                         if (@isdefined newtrees)
                             newtrees[(fl, fr)] = get(newtrees, (fl, fr), zero(coeff)) +
@@ -379,15 +404,21 @@ end
 
 # clockwise cyclic permutation while preserving (N₁, N₂): foldright & bendleft
 function cycleclockwise(f₁::FusionTree{I}, f₂::FusionTree{I}) where {I<:Sector}
-    #@info "cycleclockwise"
+    # @info "cycleclockwise"
+    # @info "input fusion trees for cycleclockwise"
+    # @show f₁, f₂
     local newtrees
     if length(f₁) > 0
-        #@info "length(f₁) > 0"
+        # @info "length(f₁) > 0"
         for ((f1a, f2a), coeffa) in foldright(f₁, f₂)
-            #@show f₁, f₂
+            # @info "foldright in cycleclockwise loop"
+            # @info "output of foldright in cycleclockwise loop" # here the innerline doesn't correctly fuse with the last leg to the unit
+            # @show f1a, f2a
             #@show coeffa
             for ((f1b, f2b), coeffb) in bendleft(f1a, f2a)
-                #@show coeffb
+                # @info "bendleft in cycleclockwise loop"
+                # @info "output of bendleft in cycleclockwise loop" 
+                # @show f1b, f2b
                 coeff = coeffa * coeffb
                 #@show coeff
                 if (@isdefined newtrees)
@@ -398,7 +429,7 @@ function cycleclockwise(f₁::FusionTree{I}, f₂::FusionTree{I}) where {I<:Sect
             end
         end
     else
-        #@info "length(f₁) = 0"
+        # @info "length(f₁) = 0"
         for ((f1a, f2a), coeffa) in bendleft(f₁, f₂)
             for ((f1b, f2b), coeffb) in foldright(f1a, f2a)
                 coeff = coeffa * coeffb
@@ -510,7 +541,7 @@ repartitioning and permuting the tree such that sectors `p1` become outgoing and
 """
 function Base.transpose(f₁::FusionTree{I}, f₂::FusionTree{I},
                         p1::IndexTuple{N₁}, p2::IndexTuple{N₂}) where {I<:Sector,N₁,N₂}
-    #@info "Base transpose"
+    # @info "Base transpose"
     N = N₁ + N₂
     @assert length(f₁) + length(f₂) == N
     #@show p1, p2
@@ -539,16 +570,19 @@ const TransposeKey{I<:Sector,N₁,N₂} = Tuple{<:FusionTree{I},<:FusionTree{I},
                                             IndexTuple{N₁},IndexTuple{N₂}}
 
 function _transpose((f₁, f₂, p1, p2)::TransposeKey{I,N₁,N₂}) where {I<:Sector,N₁,N₂}
-    #@info "_transpose"
+    # @info "_transpose"
     N = N₁ + N₂
     p = linearizepermutation(p1, p2, length(f₁), length(f₂))
     newtrees = repartition(f₁, f₂, N₁)
+    # @info "starting newtrees"
+    # @show newtrees
     length(p) == 0 && return newtrees
     i1 = findfirst(==(1), p)
     @assert i1 !== nothing
     i1 == 1 && return newtrees
     Nhalf = N >> 1
     while 1 < i1 <= Nhalf 
+        # @info "1 < i1 <= Nhalf"
         local newtrees′
         for ((f1a, f2a), coeffa) in newtrees
             for ((f1b, f2b), coeffb) in cycleanticlockwise(f1a, f2a)
@@ -565,8 +599,16 @@ function _transpose((f₁, f₂, p1, p2)::TransposeKey{I,N₁,N₂}) where {I<:S
     end
     while Nhalf < i1
         local newtrees′
+        # @info "Nhalf < i1"
+        # @show newtrees
         for ((f1a, f2a), coeffa) in newtrees
+            # @info "newtrees in _transpose loop"
+            # @info "output of newtrees in _transpose loop"
+            # @show f1a, f2a
             for ((f1b, f2b), coeffb) in cycleclockwise(f1a, f2a)
+                # @info "cycleclockwise in _transpose loop"
+                # @info "output of cycleclockwise in _transpose loop"	
+                # @show f1b, f2b
                 coeff = coeffa * coeffb
                 if (@isdefined newtrees′)
                     newtrees′[(f1b, f2b)] = get(newtrees′, (f1b, f2b), zero(coeff)) + coeff
@@ -575,6 +617,7 @@ function _transpose((f₁, f₂, p1, p2)::TransposeKey{I,N₁,N₂}) where {I<:S
                 end
             end
         end
+        # @info "replace the newtrees"
         newtrees = newtrees′
         i1 = mod1(i1 + 1, N)
     end

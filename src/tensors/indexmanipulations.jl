@@ -370,13 +370,17 @@ function _add_general_kernel!(tdst, tsrc, p, fusiontreetransform, α, β, backen
                                                    s₂, α, β, backend...)
         end
     else
+        # @show tsrc
+        # @show tdst
         # @info "start of add general kernel"
-        #@show tdst
         for (f₁, f₂) in fusiontrees(tsrc)
             # @info "fusiontreetransform"
+            # @show f₁, f₂
+            # @show tsrc[f₁, f₂]
             for ((f₁′, f₂′), coeff) in fusiontreetransform(f₁, f₂)
                 #@show stacktrace()
-                #@show coeff
+                # @show f₁′, f₂′
+                # @show tdst[f₁′, f₂′]
                 @inbounds TO.tensoradd!(tdst[f₁′, f₂′], p, tsrc[f₁, f₂], :N, α * coeff,
                                         true, backend...)
             end
