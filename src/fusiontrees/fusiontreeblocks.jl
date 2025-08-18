@@ -3,11 +3,11 @@ struct FusionTreeBlock{I,N₁,N₂,F<:FusionTreePair{I,N₁,N₂}}
 end
 
 function FusionTreeBlock{I}(uncoupled::Tuple{NTuple{N₁,I},NTuple{N₂,I}},
-                            isdual::Tuple{NTuple{N₁,Bool},NTuple{N₂,Bool}}) where {I<:Sector,
-                                                                                   N₁,N₂}
-    F₁ = fusiontreetype(I, N₁)
-    F₂ = fusiontreetype(I, N₂)
-    trees = Vector{Tuple{F₁,F₂}}(undef, 0)
+                            isdual::Tuple{NTuple{N₁,Bool},NTuple{N₂,Bool}};
+                            sizehint::Int=0) where {I<:Sector,N₁,N₂}
+    F = fusiontreetype(I, N₁, N₂)
+    trees = Vector{F}(undef, 0)
+    sizehint > 0 && sizehint!(trees, sizehint)
 
     if N₁ == N₂ == 0
         return FusionTreeBlock(trees)
@@ -54,12 +54,30 @@ numind(::Type{T}) where {T<:FusionTreeBlock} = numin(T) + numout(T)
 fusiontrees(block::FusionTreeBlock) = block.trees
 Base.length(block::FusionTreeBlock) = length(fusiontrees(block))
 
+# Within one block, all values of uncoupled and isdual are equal, so avoid hashing these
+function treeindex_data((f₁, f₂))
+    I = sectortype(f₁)
+    if FusionStyle(I) isa GenericFusion
+        return (f₁.coupled, f₁.innerlines..., f₂.innerlines...),
+               (f₁.vertices..., f₂.vertices...)
+    elseif FusionStyle(I) isa MultipleFusion
+        return (f₁.coupled, f₁.innerlines..., f₂.innerlines...)
+    else # there should be only a single element anyways
+        return false
+    end
+end
+function treeindex_map(fs::FusionTreeBlock)
+    I = sectortype(fs)
+    return fusiontreedict(I)(treeindex_data(f) => ind
+                             for (ind, f) in enumerate(fusiontrees(fs)))
+end
+
 # Manipulations
 # -------------
 function transformation_matrix(transform, dst::FusionTreeBlock{I},
                                src::FusionTreeBlock{I}) where {I}
     U = zeros(sectorscalartype(I), length(dst), length(src))
-    indexmap = Dict(f => ind for (ind, f) in enumerate(fusiontrees(dst)))
+    indexmap = treeindex_map(dst)
     for (col, f) in enumerate(fusiontrees(src))
         for (f′, c) in transform(f)
             row = indexmap[f′]
@@ -79,8 +97,8 @@ function bendright(src::FusionTreeBlock)
     N₂ = numin(src)
     @assert N₁ > 0
 
-    dst = FusionTreeBlock{I}(uncoupled_dst, isdual_dst)
-    indexmap = fusiontreedict(I)(f => ind for (ind, f) in enumerate(fusiontrees(dst)))
+    dst = FusionTreeBlock{I}(uncoupled_dst, isdual_dst; sizehint=length(src))
+    indexmap = treeindex_map(dst)
     U = zeros(sectorscalartype(I), length(dst), length(src))
 
     for (col, (f₁, f₂)) in enumerate(fusiontrees(src))
@@ -107,7 +125,7 @@ function bendright(src::FusionTreeBlock)
             coeff = coeff₀ * Bsymbol(a, b, c)
             vertices2 = N₂ > 0 ? (f₂.vertices..., 1) : ()
             f₂′ = FusionTree(uncoupled2, a, isdual2, inner2, vertices2)
-            row = indexmap[(f₁′, f₂′)]
+            row = indexmap[treeindex_data((f₁′, f₂′))]
             @inbounds U[row, col] = coeff
         else
             Bmat = Bsymbol(a, b, c)
@@ -138,8 +156,8 @@ function bendleft(src::FusionTreeBlock)
     N₂ = numout(src)
     @assert N₁ > 0
 
-    dst = FusionTreeBlock{I}(uncoupled_dst, isdual_dst)
-    indexmap = fusiontreedict(I)(f => ind for (ind, f) in enumerate(fusiontrees(dst)))
+    dst = FusionTreeBlock{I}(uncoupled_dst, isdual_dst; sizehint=length(src))
+    indexmap = treeindex_map(dst)
     U = zeros(sectorscalartype(I), length(dst), length(src))
 
     for (col, (f₂, f₁)) in enumerate(fusiontrees(src))
@@ -166,7 +184,7 @@ function bendleft(src::FusionTreeBlock)
             coeff = coeff₀ * Bsymbol(a, b, c)
             vertices2 = N₂ > 0 ? (f₂.vertices..., 1) : ()
             f₂′ = FusionTree(uncoupled2, a, isdual2, inner2, vertices2)
-            row = indexmap[(f₂′, f₁′)]
+            row = indexmap[treeindex_data((f₂′, f₁′))]
             @inbounds U[row, col] = conj(coeff)
         else
             Bmat = Bsymbol(a, b, c)
@@ -176,7 +194,7 @@ function bendleft(src::FusionTreeBlock)
                 iszero(coeff) && continue
                 vertices2 = N₂ > 0 ? (f₂.vertices..., ν) : ()
                 f₂′ = FusionTree(uncoupled2, a, isdual2, inner2, vertices2)
-                row = indexmap[(f₂′, f₁′)]
+                row = indexmap[treeindex_data((f₂′, f₁′))]
                 @inbounds U[row, col] = conj(coeff)
             end
         end
@@ -193,10 +211,9 @@ function foldright(src::FusionTreeBlock)
     N₁ = numout(src)
     N₂ = numin(src)
     @assert N₁ > 0
-    dst = FusionTreeBlock{sectortype(src)}(uncoupled_dst, isdual_dst)
 
-    dst = FusionTreeBlock{I}(uncoupled_dst, isdual_dst)
-    indexmap = fusiontreedict(I)(f => ind for (ind, f) in enumerate(fusiontrees(dst)))
+    dst = FusionTreeBlock{I}(uncoupled_dst, isdual_dst; sizehint=length(src))
+    indexmap = treeindex_map(dst)
     U = zeros(sectorscalartype(I), length(dst), length(src))
 
     for (col, (f₁, f₂)) in enumerate(fusiontrees(src))
@@ -215,7 +232,7 @@ function foldright(src::FusionTreeBlock)
             c = first(c1 ⊗ c2)
             fl = FusionTree{I}(Base.tail(f₁.uncoupled), c, Base.tail(f₁.isdual))
             fr = FusionTree{I}((c1, f₂.uncoupled...), c, (!isduala, f₂.isdual...))
-            row = indexmap[(fl, fr)]
+            row = indexmap[treeindex_data((fl, fr))]
             @inbounds U[row, col] = factor
         else
             if N₁ == 1
@@ -229,6 +246,7 @@ function foldright(src::FusionTreeBlock)
                 c ∈ cset || continue
                 for μ in 1:Nsymbol(c1, c2, c)
                     fc = FusionTree((c1, c2), c, (!isduala, false), (), (μ,))
+                    frs_coeffs = insertat(fc, 2, f₂)
                     for (fl′, coeff1) in insertat(fc, 2, f₁)
                         N₁ > 1 && !isone(fl′.innerlines[1]) && continue
                         coupled = fl′.coupled
@@ -237,9 +255,9 @@ function foldright(src::FusionTreeBlock)
                         inner = N₁ <= 3 ? () : Base.tail(Base.tail(fl′.innerlines))
                         vertices = N₁ <= 2 ? () : Base.tail(Base.tail(fl′.vertices))
                         fl = FusionTree{I}(uncoupled, coupled, isdual, inner, vertices)
-                        for (fr, coeff2) in insertat(fc, 2, f₂)
+                        for (fr, coeff2) in frs_coeffs
                             coeff = factor * coeff1 * conj(coeff2)
-                            row = indexmap[(fl, fr)]
+                            row = indexmap[treeindex_data((fl, fr))]
                             @inbounds U[row, col] = coeff
                         end
                     end
@@ -263,8 +281,8 @@ function foldleft(src::FusionTreeBlock)
     N₂ = numout(src)
     @assert N₁ > 0
 
-    dst = FusionTreeBlock{I}(uncoupled_dst, isdual_dst)
-    indexmap = fusiontreedict(I)(f => ind for (ind, f) in enumerate(fusiontrees(dst)))
+    dst = FusionTreeBlock{I}(uncoupled_dst, isdual_dst; sizehint=length(src))
+    indexmap = treeindex_map(dst)
     U = zeros(sectorscalartype(I), length(dst), length(src))
 
     for (col, (f₂, f₁)) in enumerate(fusiontrees(src))
@@ -283,7 +301,7 @@ function foldleft(src::FusionTreeBlock)
             c = first(c1 ⊗ c2)
             fl = FusionTree{I}(Base.tail(f₁.uncoupled), c, Base.tail(f₁.isdual))
             fr = FusionTree{I}((c1, f₂.uncoupled...), c, (!isduala, f₂.isdual...))
-            row = indexmap[(fr, fl)]
+            row = indexmap[treeindex_data((fr, fl))]
             @inbounds U[row, col] = conj(factor)
         else
             if N₁ == 1
@@ -297,6 +315,7 @@ function foldleft(src::FusionTreeBlock)
                 c ∈ cset || continue
                 for μ in 1:Nsymbol(c1, c2, c)
                     fc = FusionTree((c1, c2), c, (!isduala, false), (), (μ,))
+                    fr_coeffs = insertat(fc, 2, f₂)
                     for (fl′, coeff1) in insertat(fc, 2, f₁)
                         N₁ > 1 && !isone(fl′.innerlines[1]) && continue
                         coupled = fl′.coupled
@@ -305,9 +324,9 @@ function foldleft(src::FusionTreeBlock)
                         inner = N₁ <= 3 ? () : Base.tail(Base.tail(fl′.innerlines))
                         vertices = N₁ <= 2 ? () : Base.tail(Base.tail(fl′.vertices))
                         fl = FusionTree{I}(uncoupled, coupled, isdual, inner, vertices)
-                        for (fr, coeff2) in insertat(fc, 2, f₂)
+                        for (fr, coeff2) in fr_coeffs
                             coeff = factor * coeff1 * conj(coeff2)
-                            row = indexmap[(fr, fl)]
+                            row = indexmap[treeindex_data((fr, fl))]
                             @inbounds U[row, col] = conj(coeff)
                         end
                     end
@@ -436,17 +455,136 @@ function artin_braid(src::FusionTreeBlock{I,N,0}, i; inv::Bool=false) where {I,N
         throw(ArgumentError("Cannot swap outputs i=$i and i+1 out of only $N outputs"))
 
     uncoupled = src.uncoupled[1]
-    uncoupled′ = TupleTools.setindex(uncoupled, uncoupled[i + 1], i)
-    uncoupled′ = TupleTools.setindex(uncoupled′, uncoupled[i], i + 1)
+    a, b = uncoupled[i], uncoupled[i + 1]
+    uncoupled′ = TupleTools.setindex(uncoupled, b, i)
+    uncoupled′ = TupleTools.setindex(uncoupled′, a, i + 1)
+    coupled′ = rightone(src.uncoupled[1][N])
+
     isdual = src.isdual[1]
     isdual′ = TupleTools.setindex(isdual, isdual[i], i + 1)
     isdual′ = TupleTools.setindex(isdual′, isdual[i + 1], i)
-    dst = FusionTreeBlock{I}((uncoupled′, ()), (isdual′, ()))
+    dst = FusionTreeBlock{I}((uncoupled′, ()), (isdual′, ()); sizehint=length(src))
 
-    # TODO: do we want to rewrite `artin_braid` to take double trees instead?
-    U = transformation_matrix(dst, src) do (f₁, f₂)
-        return ((f₁′, f₂) => c for (f₁′, c) in artin_braid(f₁, i; inv))
+    oneT = one(sectorscalartype(I))
+
+    indexmap = treeindex_map(dst)
+    U = zeros(sectorscalartype(I), length(dst), length(src))
+
+    if isone(a) || isone(b) # braiding with trivial sector: simple and always possible
+        for (col, (f, f₂)) in enumerate(fusiontrees(src))
+            inner = f.innerlines
+            inner_extended = (uncoupled[1], inner..., coupled′)
+            vertices = f.vertices
+            inner′ = inner
+            vertices′ = vertices
+            if i > 1 # we also need to alter innerlines and vertices
+                inner′ = TupleTools.setindex(inner,
+                                             inner_extended[isone(a) ? (i + 1) : (i - 1)],
+                                             i - 1)
+                vertices′ = TupleTools.setindex(vertices′, vertices[i], i - 1)
+                vertices′ = TupleTools.setindex(vertices′, vertices[i - 1], i)
+            end
+            f′ = FusionTree{I}(uncoupled′, coupled′, isdual′, inner′, vertices′)
+            row = indexmap[treeindex_data((f′, f₂))]
+            @inbounds U[row, col] = oneT
+        end
+        return dst, U
     end
+
+    BraidingStyle(I) isa NoBraiding &&
+        throw(SectorMismatch(lazy"Cannot braid sectors $a and $b"))
+
+    for (col, (f, f₂)) in enumerate(fusiontrees(src))
+        inner = f.innerlines
+        inner_extended = (uncoupled[1], inner..., coupled′)
+        vertices = f.vertices
+
+        if i == 1
+            c = N > 2 ? inner[1] : coupled′
+            if FusionStyle(I) isa MultiplicityFreeFusion
+                R = oftype(oneT, (inv ? conj(Rsymbol(b, a, c)) : Rsymbol(a, b, c)))
+                f′ = FusionTree{I}(uncoupled′, coupled′, isdual′, inner, vertices)
+                row = indexmap[treeindex_data((f′, f₂))]
+                @inbounds U[row, col] = R
+            else # GenericFusion
+                μ = vertices[1]
+                Rmat = inv ? Rsymbol(b, a, c)' : Rsymbol(a, b, c)
+                for ν in axes(Rmat, 2)
+                    R = oftype(oneT, Rmat[μ, ν])
+                    iszero(R) && continue
+                    vertices′ = TupleTools.setindex(vertices, ν, 1)
+                    f′ = FusionTree{I}(uncoupled′, coupled′, isdual′, inner, vertices′)
+                    row = indexmap[treeindex_data((f′, f₂))]
+                    @inbounds U[row, col] = R
+                end
+            end
+            continue
+        end
+        # case i > 1: other naming convention
+        b = uncoupled[i]
+        d = uncoupled[i + 1]
+        a = inner_extended[i - 1]
+        c = inner_extended[i]
+        e = inner_extended[i + 1]
+        if FusionStyle(I) isa UniqueFusion
+            c′ = first(a ⊗ d)
+            coeff = oftype(oneT,
+                           if inv
+                               conj(Rsymbol(d, c, e) * Fsymbol(d, a, b, e, c′, c)) *
+                               Rsymbol(d, a, c′)
+                           else
+                               Rsymbol(c, d, e) *
+                               conj(Fsymbol(d, a, b, e, c′, c) * Rsymbol(a, d, c′))
+                           end)
+            inner′ = TupleTools.setindex(inner, c′, i - 1)
+            f′ = FusionTree{I}(uncoupled′, coupled′, isdual′, inner′)
+            row = indexmap[treeindex_data((f′, f₂))]
+            @inbounds U[row, col] = coeff
+        elseif FusionStyle(I) isa SimpleFusion
+            cs = collect(I, intersect(a ⊗ d, e ⊗ conj(b)))
+            for c′ in cs
+                coeff = oftype(oneT,
+                               if inv
+                                   conj(Rsymbol(d, c, e) * Fsymbol(d, a, b, e, c′, c)) *
+                                   Rsymbol(d, a, c′)
+                               else
+                                   Rsymbol(c, d, e) *
+                                   conj(Fsymbol(d, a, b, e, c′, c) * Rsymbol(a, d, c′))
+                               end)
+                iszero(coeff) && continue
+                inner′ = TupleTools.setindex(inner, c′, i - 1)
+                f′ = FusionTree{I}(uncoupled′, coupled′, isdual′, inner′)
+                row = indexmap[treeindex_data((f′, f₂))]
+                @inbounds U[row, col] = coeff
+            end
+        else # GenericFusion
+            cs = collect(I, intersect(a ⊗ d, e ⊗ conj(b)))
+            for c′ in cs
+                Rmat1 = inv ? Rsymbol(d, c, e)' : Rsymbol(c, d, e)
+                Rmat2 = inv ? Rsymbol(d, a, c′)' : Rsymbol(a, d, c′)
+                Fmat = Fsymbol(d, a, b, e, c′, c)
+                μ = vertices[i - 1]
+                ν = vertices[i]
+                for σ in 1:Nsymbol(a, d, c′)
+                    for λ in 1:Nsymbol(c′, b, e)
+                        coeff = zero(oneT)
+                        for ρ in 1:Nsymbol(d, c, e), κ in 1:Nsymbol(d, a, c′)
+                            coeff += Rmat1[ν, ρ] * conj(Fmat[κ, λ, μ, ρ]) *
+                                     conj(Rmat2[σ, κ])
+                        end
+                        iszero(coeff) && continue
+                        vertices′ = TupleTools.setindex(vertices, σ, i - 1)
+                        vertices′ = TupleTools.setindex(vertices′, λ, i)
+                        inner′ = TupleTools.setindex(inner, c′, i - 1)
+                        f′ = FusionTree{I}(uncoupled′, coupled′, isdual′, inner′, vertices′)
+                        row = indexmap[treeindex_data((f′, f₂))]
+                        @inbounds U[row, col] = coeff
+                    end
+                end
+            end
+        end
+    end
+
     return dst, U
 end
 
@@ -457,7 +595,7 @@ function braid(src::FusionTreeBlock{I,N,0}, p::NTuple{N,Int},
     if FusionStyle(I) isa UniqueFusion && BraidingStyle(I) isa SymmetricBraiding
         uncoupled′ = TupleTools._permute(src.uncoupled[1], p)
         isdual′ = TupleTools._permute(src.isdual[1], p)
-        dst = FusionTreeBlock{I}(uncoupled′, isdual′)
+        dst = FusionTreeBlock{I}(uncoupled′, isdual′; sizehint=length(src))
         U = transformation_matrix(dst, src) do (f₁, f₂)
             return ((f₁′, f₂) => c for (f₁′, c) in braid(f₁, p, levels))
         end
@@ -482,7 +620,10 @@ end
 
 const _FSBraidKey{I,N₁,N₂} = Tuple{<:FusionTreeBlock{I},Index2Tuple{N₁,N₂},Index2Tuple}
 
-@cached function _fsbraid(key::_FSBraidKey{I,N₁,N₂})::Tuple{FusionTreeBlock{I,N₁,N₂},
+@cached function _fsbraid(key::_FSBraidKey{I,N₁,N₂})::Tuple{FusionTreeBlock{I,N₁,N₂,
+                                                                            fusiontreetype(I,
+                                                                                           N₁,
+                                                                                           N₂)},
                                                             Matrix{sectorscalartype(I)}} where {I,
                                                                                                 N₁,
                                                                                                 N₂}
