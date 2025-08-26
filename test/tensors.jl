@@ -332,7 +332,6 @@ for V in spacelist
             end
         end
         @timedtestset "Index flipping: test flipping inverse" begin
-            @assert BraidingStyle(I) isa SymmetricBraiding
             t = rand(ComplexF64, V1 ⊗ V1' ← V1' ⊗ V1)
             for i in 1:4
                 @test t ≈ flip(flip(t, i), i; inv=true)
