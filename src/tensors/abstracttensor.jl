@@ -102,7 +102,6 @@ similarstoragetype(::Type{D}, ::Type{T}) where {D <: AbstractDict{<:Sector, <:Ab
 # default storage type for numbers
 similarstoragetype(::Type{T}) where {T <: Number} = Vector{T}
 
-
 # tensor characteristics: space and index information
 #-----------------------------------------------------
 """

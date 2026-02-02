@@ -19,17 +19,15 @@ LinearAlgebra.normalize!(t::AbstractTensorMap, p::Real = 2) = scale!(t, inv(norm
 LinearAlgebra.normalize(t::AbstractTensorMap, p::Real = 2) = scale(t, inv(norm(t, p)))
 
 # destination allocation for matrix multiplication
+# note that we don't fall back to `tensoralloc_contract` since that needs to account for
+# permutations, which might require complex scalartypes even if the inputs are real.
 function compose_dest(A::AbstractTensorMap, B::AbstractTensorMap)
+    S = check_spacetype(A, B)
     TC = TO.promote_contract(scalartype(A), scalartype(B), One)
-    pA = (codomainind(A), domainind(A))
-    pB = (codomainind(B), domainind(B))
-    pAB = (codomainind(A), ntuple(i -> i + numout(A), numin(B)))
-    return TO.tensoralloc_contract(
-        TC,
-        A, pA, false,
-        B, pB, false,
-        pAB, Val(false)
-    )
+    M = promote_storagetype(similarstoragetype(A, TC), similarstoragetype(B, TC))
+    TTC = tensormaptype(S, numout(A), numin(B), M)
+    structure = codomain(A) ← domain(B)
+    return TO.tensoralloc(TTC, structure, Val(false))
 end
 
 """
@@ -292,8 +290,9 @@ function LinearAlgebra.rank(
         t::AbstractTensorMap;
         atol::Real = 0, rtol::Real = atol > 0 ? 0 : _default_rtol(t)
     )
-    r = 0 * dim(first(allunits(sectortype(t))))
-    dim(t) == 0 && return r
+    r = dim(t)
+    iszero(r) && return r
+    r = zero(r)
     S = MatrixAlgebraKit.svd_vals(t)
     tol = max(atol, rtol * maximum(parent(S)))
     for (c, b) in pairs(S)
@@ -325,7 +324,7 @@ end
 function LinearAlgebra.tr(t::AbstractTensorMap)
     domain(t) == codomain(t) ||
         throw(SpaceMismatch("Trace of a tensor only exist when domain == codomain"))
-    s = zero(scalartype(t))
+    s = zero(scalartype(t)) * zero(dimscalartype(sectortype(t)))
     for (c, b) in blocks(t)
         s += dim(c) * tr(b)
     end
@@ -538,8 +537,7 @@ absorb(tdst::AbstractTensorMap, tsrc::AbstractTensorMap) = absorb!(copy(tdst), t
 function absorb!(tdst::AbstractTensorMap, tsrc::AbstractTensorMap)
     numin(tdst) == numin(tsrc) && numout(tdst) == numout(tsrc) ||
         throw(DimensionError("Incompatible number of indices for source and destination"))
-    S = spacetype(tdst)
-    S == spacetype(tsrc) || throw(SpaceMismatch("incompatible spacetypes"))
+    S = check_spacetype(tdst, tsrc)
     dom = mapreduce(infimum, ⊗, domain(tdst), domain(tsrc); init = one(S))
     cod = mapreduce(infimum, ⊗, codomain(tdst), codomain(tsrc); init = one(S))
     for (f1, f2) in fusiontrees(cod ← dom)
@@ -561,7 +559,7 @@ new `TensorMap` instance whose codomain is `codomain(t1) ⊗ codomain(t2)` and w
 is `domain(t1) ⊗ domain(t2)`.
 """
 function ⊗(A::AbstractTensorMap, B::AbstractTensorMap)
-    (S = spacetype(A)) === spacetype(B) || throw(SpaceMismatch("incompatible space types"))
+    check_spacetype(A, B)
 
     # allocate destination with correct scalartype
     pA = ((codomainind(A)..., domainind(A)...), ())

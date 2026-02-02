@@ -1,5 +1,28 @@
 # Index manipulations
 #---------------------
+
+# find the scalartype after applying operations: take into account fusion and/or braiding
+# might need to become Float or Complex to capture complex recoupling coefficients but don't alter precision
+for (operation, manipulation) in (
+        :flip => :sector, :twist => :braiding,
+        :transpose => :fusion, :permute => :sector, :braid => :sector,
+    )
+    promote_op = Symbol(:promote_, operation)
+    manipulation_scalartype = Symbol(manipulation, :scalartype)
+
+    @eval begin
+        $promote_op(t::AbstractTensorMap) = $promote_op(typeof(t))
+        $promote_op(::Type{T}) where {T <: AbstractTensorMap} =
+            $promote_op(scalartype(T), sectortype(T))
+        $promote_op(::Type{T}, ::Type{I}) where {T <: Number, I <: Sector} =
+            sectorscalartype(I) <: Integer ? T :
+            sectorscalartype(I) <: Real ? float(T) : complex(T)
+        # TODO: currently the manipulations all use sectorscalartype, change to:
+        # $manipulation_scalartype(I) <: Integer ? T :
+        # $manipulation_scalartype(I) <: Real ? float(T) : complex(T)
+    end
+end
+
 """
     flip(t::AbstractTensorMap, I) -> t′::AbstractTensorMap
 
@@ -15,7 +38,7 @@ Return a new tensor that is isomorphic to `t` but where the arrows on the indice
 """
 function flip(t::AbstractTensorMap, I; inv::Bool = false)
     P = flip(space(t), I)
-    t′ = similar(t, P)
+    t′ = similar(t, promote_flip(t), P)
     for (f₁, f₂) in fusiontrees(t)
         (f₁′, f₂′), factor = only(flip(f₁, f₂, I; inv))
         scale!(t′[f₁′, f₂′], t[f₁, f₂], factor)
@@ -39,53 +62,36 @@ See [`permute`](@ref) for creating a new tensor and [`add_permute!`](@ref) for a
 end
 
 """
-    permute(tsrc::AbstractTensorMap, (p₁, p₂)::Index2Tuple;
-            copy::Bool=false)
-        -> tdst::TensorMap
+    permute(tsrc::AbstractTensorMap, (p₁, p₂)::Index2Tuple; copy::Bool = false) -> tdst::TensorMap
 
 Return tensor `tdst` obtained by permuting the indices of `tsrc`.
 The codomain and domain of `tdst` correspond to the indices in `p₁` and `p₂` of `tsrc` respectively.
 
-If `copy=false`, `tdst` might share data with `tsrc` whenever possible. Otherwise, a copy is always made.
+If `copy = false`, `tdst` might share data with `tsrc` whenever possible.
+Otherwise, a copy is always made.
 
 To permute into an existing destination, see [permute!](@ref) and [`add_permute!`](@ref)
 """
-function permute(
-        t::AbstractTensorMap, (p₁, p₂)::Index2Tuple{N₁, N₂}; copy::Bool = false
-    ) where {N₁, N₂}
-    space′ = permute(space(t), (p₁, p₂))
-    # share data if possible
-    if !copy && p₁ === codomainind(t) && p₂ === domainind(t)
-        return t
-    end
-    # general case
-    @inbounds begin
-        return permute!(similar(t, space′), t, (p₁, p₂))
-    end
-end
-function permute(t::TensorMap, (p₁, p₂)::Index2Tuple{N₁, N₂}; copy::Bool = false) where {N₁, N₂}
-    space′ = permute(space(t), (p₁, p₂))
+function permute(t::AbstractTensorMap, p::Index2Tuple; copy::Bool = false)
     # share data if possible
     if !copy
-        if p₁ === codomainind(t) && p₂ === domainind(t)
+        if p == (codomainind(t), domainind(t))
             return t
-        elseif has_shared_permute(t, (p₁, p₂))
-            return TensorMap(t.data, space′)
+        elseif t isa TensorMap && has_shared_permute(t, p)
+            return TensorMap(t.data, permute(space(t), p))
         end
     end
+
     # general case
-    @inbounds begin
-        return permute!(similar(t, space′), t, (p₁, p₂))
-    end
+    tdst = similar(t, promote_permute(t), permute(space(t), p))
+    return @inbounds permute!(tdst, t, p)
 end
 function permute(t::AdjointTensorMap, (p₁, p₂)::Index2Tuple; copy::Bool = false)
     p₁′ = adjointtensorindices(t, p₂)
     p₂′ = adjointtensorindices(t, p₁)
     return adjoint(permute(adjoint(t), (p₁′, p₂′); copy))
 end
-function permute(t::AbstractTensorMap, p::IndexTuple; copy::Bool = false)
-    return permute(t, (p, ()); copy)
-end
+permute(t::AbstractTensorMap, p::IndexTuple; copy::Bool = false) = permute(t, (p, ()); copy)
 
 function has_shared_permute(t::AbstractTensorMap, (p₁, p₂)::Index2Tuple)
     return (p₁ === codomainind(t) && p₂ === domainind(t))
@@ -143,20 +149,16 @@ If `copy=false`, `tdst` might share data with `tsrc` whenever possible. Otherwis
 To braid into an existing destination, see [braid!](@ref) and [`add_braid!`](@ref)
 """
 function braid(
-        t::AbstractTensorMap, (p₁, p₂)::Index2Tuple, levels::IndexTuple; copy::Bool = false
+        t::AbstractTensorMap, p::Index2Tuple, levels::IndexTuple; copy::Bool = false
     )
-    @assert length(levels) == numind(t)
-    if BraidingStyle(sectortype(t)) isa SymmetricBraiding
-        return permute(t, (p₁, p₂); copy = copy)
-    end
-    if !copy && p₁ == codomainind(t) && p₂ == domainind(t)
-        return t
-    end
+    length(levels) == numind(t) || throw(ArgumentError("invalid levels"))
+
+    BraidingStyle(sectortype(t)) isa SymmetricBraiding && return permute(t, p; copy)
+    (!copy && p == (codomainind(t), domainind(t))) && return t
+
     # general case
-    space′ = permute(space(t), (p₁, p₂))
-    @inbounds begin
-        return braid!(similar(t, space′), t, (p₁, p₂), levels)
-    end
+    tdst = similar(t, promote_braid(t), permute(space(t), p))
+    return @inbounds braid!(tdst, t, p, levels)
 end
 # TODO: braid for `AdjointTensorMap`; think about how to map the `levels` argument.
 
@@ -196,20 +198,15 @@ If `copy=false`, `tdst` might share data with `tsrc` whenever possible. Otherwis
 To permute into an existing destination, see [permute!](@ref) and [`add_permute!`](@ref)
 """
 function LinearAlgebra.transpose(
-        t::AbstractTensorMap, (p₁, p₂)::Index2Tuple = _transpose_indices(t);
+        t::AbstractTensorMap, p::Index2Tuple = _transpose_indices(t);
         copy::Bool = false
     )
-    if sectortype(t) === Trivial
-        return permute(t, (p₁, p₂); copy = copy)
-    end
-    if !copy && p₁ == codomainind(t) && p₂ == domainind(t)
-        return t
-    end
+    sectortype(t) === Trivial && return permute(t, p; copy)
+    (!copy && p == (codomainind(t), domainind(t))) && return t
+
     # general case
-    space′ = permute(space(t), (p₁, p₂))
-    @inbounds begin
-        return transpose!(similar(t, space′), t, (p₁, p₂))
-    end
+    tdst = similar(t, promote_transpose(t), permute(space(t), p))
+    return @inbounds transpose!(tdst, t, p)
 end
 
 function LinearAlgebra.transpose(
@@ -296,6 +293,10 @@ function twist!(t::AbstractTensorMap, inds; inv::Bool = false)
         throw(ArgumentError(msg))
     end
     has_shared_twist(t, inds) && return t
+
+    (scalartype(t) <: Real && !(sectorscalartype(sectortype(t)) <: Real)) &&
+        throw(ArgumentError("No in-place `twist!` for a real tensor with complex sector type"))
+
     N₁ = numout(t)
     for (f₁, f₂) in fusiontrees(t)
         θ = prod(i -> i <= N₁ ? twist(f₁.uncoupled[i]) : twist(f₂.uncoupled[i - N₁]), inds)
@@ -317,7 +318,9 @@ See [`twist!`](@ref) for storing the result in place.
 """
 function twist(t::AbstractTensorMap, inds; inv::Bool = false, copy::Bool = false)
     !copy && has_shared_twist(t, inds) && return t
-    return twist!(Base.copy(t), inds; inv)
+    tdst = similar(t, promote_twist(t))
+    copy!(tdst, t)
+    return twist!(tdst, inds; inv)
 end
 
 # Methods which change the number of indices, implement using `Val(i)` for type inference
@@ -413,7 +416,7 @@ end
 spacecheck_transform(f, tdst::AbstractTensorMap, tsrc::AbstractTensorMap, args...) =
     spacecheck_transform(f, space(tdst), space(tsrc), args...)
 @noinline function spacecheck_transform(f, Vdst::TensorMapSpace, Vsrc::TensorMapSpace, p::Index2Tuple)
-    spacetype(Vdst) == spacetype(Vsrc) || throw(SectorMismatch("incompatible sector types"))
+    check_spacetype(Vdst, Vsrc)
     f(Vsrc, p) == Vdst ||
         throw(
         SpaceMismatch(
@@ -427,7 +430,7 @@ spacecheck_transform(f, tdst::AbstractTensorMap, tsrc::AbstractTensorMap, args..
     return nothing
 end
 @noinline function spacecheck_transform(::typeof(braid), Vdst::TensorMapSpace, Vsrc::TensorMapSpace, p::Index2Tuple, levels::IndexTuple)
-    spacetype(Vdst) == spacetype(Vsrc) || throw(SectorMismatch("incompatible sector types"))
+    check_spacetype(Vdst, Vsrc)
     braid(Vsrc, p, levels) == Vdst ||
         throw(
         SpaceMismatch(
