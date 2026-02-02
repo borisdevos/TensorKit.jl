@@ -290,9 +290,8 @@ function LinearAlgebra.rank(
         t::AbstractTensorMap;
         atol::Real = 0, rtol::Real = atol > 0 ? 0 : _default_rtol(t)
     )
-    r = dim(t)
-    iszero(r) && return r
-    r = zero(r)
+    r = zero(dimscalartype(sectortype(t)))
+    iszero(dim(t)) && return r
     S = MatrixAlgebraKit.svd_vals(t)
     tol = max(atol, rtol * maximum(parent(S)))
     for (c, b) in pairs(S)
@@ -301,7 +300,6 @@ function LinearAlgebra.rank(
         end
     end
     return r
-    # return sum(((c, b),) -> dim(c) * count(>(tol), b), S; init)
 end
 
 function LinearAlgebra.cond(t::AbstractTensorMap, p::Real = 2)
