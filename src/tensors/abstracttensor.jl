@@ -224,7 +224,8 @@ end
 # tensor characteristics: work on instances and pass to type
 #------------------------------------------------------------
 InnerProductStyle(t::AbstractTensorMap) = InnerProductStyle(typeof(t))
-storagetype(t::AbstractTensorMap) = storagetype(typeof(t))
+storagetype(t) = storagetype(typeof(t))
+storagetype(T::Type) = throw(MethodError(storagetype, T))
 blocktype(t::AbstractTensorMap) = blocktype(typeof(t))
 
 numout(t::AbstractTensorMap) = numout(typeof(t))
