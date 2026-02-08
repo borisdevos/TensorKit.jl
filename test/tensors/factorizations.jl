@@ -254,6 +254,14 @@ for V in spacelist
                 @test isisometric(U)
                 @test isisometric(Vᴴ; side = :right)
 
+                # when rank of t is already smaller than truncrank
+                t_rank = ceil(Int, min(dim(codomain(t)), dim(domain(t))))
+                U, S, Vᴴ, ϵ = @constinferred svd_trunc(t; trunc = truncrank(t_rank + 1))
+                @test U * S * Vᴴ ≈ t
+                @test ϵ ≈ 0
+                @test isisometric(U)
+                @test isisometric(Vᴴ; side = :right)
+
                 # dimension of S is a float for IsingBimodule
                 nvals = round(Int, dim(domain(S)) / 2)
                 trunc = truncrank(nvals)
