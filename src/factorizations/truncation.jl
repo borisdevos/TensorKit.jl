@@ -171,10 +171,8 @@ function MAK.findtruncated(values::SectorVector, strategy::TruncationByOrder)
 
     # dimensions are all 1 so no need to account for weight
     if FusionStyle(I) isa UniqueFusion
-        if length(parent(values)) <= strategy.howmany
-            return MAK.findtruncated(values, NoTruncation())
-        end
-        perm = partialsortperm(parent(values), 1:strategy.howmany; strategy.by, strategy.rev)
+        howmany = min(length(parent(values)), strategy.howmany)
+        perm = partialsortperm(parent(values), 1:howmany; strategy.by, strategy.rev)
         result = similar(values, Bool)
         fill!(parent(result), false)
         parent(result)[perm] .= true
@@ -185,9 +183,6 @@ function MAK.findtruncated(values::SectorVector, strategy::TruncationByOrder)
     dims = similar(values, Base.promote_op(dim, I))
     for (c, v) in pairs(dims)
         fill!(v, dim(c))
-    end
-    if sum(dims) <= strategy.howmany
-        return MAK.findtruncated(values, NoTruncation())
     end
 
     # allocate logical array for the output
