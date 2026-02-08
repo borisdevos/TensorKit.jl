@@ -257,7 +257,7 @@ MAK.findtruncated_svd(values::SectorVector, strategy::TruncationByError) =
 
 function MAK.findtruncated(values::SectorVector, strategy::TruncationSpace)
     blockstrategy(c) = truncrank(dim(strategy.space, c); strategy.by, strategy.rev)
-    return SectorDict(c => MAK.findtruncated(d, blockstrategy(c)) for (c, d) in values)
+    return SectorDict(c => MAK.findtruncated(d, blockstrategy(c)) for (c, d) in pairs(values))
 end
 function MAK.findtruncated_svd(values::SectorVector, strategy::TruncationSpace)
     blockstrategy(c) = truncrank(dim(strategy.space, c); strategy.by, strategy.rev)
